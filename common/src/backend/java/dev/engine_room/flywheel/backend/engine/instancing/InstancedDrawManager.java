@@ -4,10 +4,13 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+import org.jetbrains.annotations.Nullable;
+
 import dev.engine_room.flywheel.api.backend.Engine;
 import dev.engine_room.flywheel.api.instance.Instance;
 import dev.engine_room.flywheel.api.material.Material;
 import dev.engine_room.flywheel.api.material.Transparency;
+import dev.engine_room.flywheel.backend.MobileOptions;
 import dev.engine_room.flywheel.backend.Samplers;
 import dev.engine_room.flywheel.backend.compile.ContextShader;
 import dev.engine_room.flywheel.backend.compile.InstancingPrograms;
@@ -52,6 +55,7 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 	private final TextureBuffer instanceTexture;
 	private final InstancedLight light;
 
+	@Nullable
 	private final OitFramebuffer oitFramebuffer;
 
 	public InstancedDrawManager(InstancingPrograms programs) {
@@ -65,7 +69,7 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 
 		meshPool.bind(vao);
 
-		oitFramebuffer = new OitFramebuffer(programs.oitPrograms());
+		oitFramebuffer = MobileOptions.oit ? new OitFramebuffer(programs.oitPrograms()) : null;
 
 	}
 
@@ -94,7 +98,7 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 			oitDraws.clear();
 
 			for (var draw : allDraws) {
-				if (draw.material()
+				if (MobileOptions.oit && draw.material()
 						.transparency() == Transparency.ORDER_INDEPENDENT) {
 					oitDraws.add(draw);
 				} else {
@@ -120,7 +124,7 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 
 		submitDraws();
 
-		if (!oitDraws.isEmpty()) {
+		if (oitFramebuffer != null && !oitDraws.isEmpty()) {
 			oitFramebuffer.prepare();
 
 			oitFramebuffer.depthRange();
@@ -212,7 +216,9 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 
 		light.delete();
 
-		oitFramebuffer.delete();
+		if (oitFramebuffer != null) {
+			oitFramebuffer.delete();
+		}
 
 		super.delete();
 	}

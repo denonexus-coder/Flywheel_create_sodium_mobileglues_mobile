@@ -14,6 +14,7 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
 import dev.engine_room.flywheel.backend.FlwBackend;
+import dev.engine_room.flywheel.backend.MobileOptions;
 import dev.engine_room.flywheel.backend.compile.core.Compilation;
 import dev.engine_room.flywheel.backend.gl.shader.GlProgram;
 import dev.engine_room.flywheel.backend.glsl.GlslVersion;
@@ -39,9 +40,16 @@ public final class GlCompat {
 	public static final String GL_VERSION_STRING = safeGetString(GL20C.GL_VERSION);
 	public static final String GL_SHADING_LANGUAGE_VERSION_STRING = safeGetString(GL20C.GL_SHADING_LANGUAGE_VERSION);
 
+	/**
+	 * True when the driver looks like a mobile or translation-layer stack. MobileGlues
+	 * advertises a desktop-ish feature set, but parts of it are emulated or simply broken,
+	 * so we have to be conservative about what we enable.
+	 */
+	public static final boolean MOBILE_GLUES = detectMobileGlues();
+
 	public static final Driver DRIVER = readVendorString();
 	public static final int SUBGROUP_SIZE = subgroupSize();
-	public static final boolean ALLOW_DSA = true;
+	public static final boolean ALLOW_DSA = !MOBILE_GLUES;
 	public static final GlslVersion MAX_GLSL_VERSION = maxGlslVersion();
 
 	public static final boolean SUPPORTS_DSA = ALLOW_DSA && isDsaSupported();
@@ -152,6 +160,14 @@ public final class GlCompat {
 		if (CAPABILITIES == null) {
 			return false;
 		}
+		if (MOBILE_GLUES) {
+			// MobileGlues can end up reporting a core profile high enough to make
+			// OpenGL46 true, or advertising enough of the ARB extensions below, while
+			// glMultiDrawElementsIndirect is a no-op in the translator. That would make
+			// the indirect backend draw literally nothing, so refuse it outright and let
+			// the instancing backend take over.
+			return false;
+		}
 		if (CAPABILITIES.OpenGL46) {
 			return true;
 		}
@@ -171,6 +187,33 @@ public final class GlCompat {
 		}
 
 		return CAPABILITIES.GL_ARB_direct_state_access;
+	}
+
+	/**
+	 * Detect a mobile / translation-layer driver from the GL strings. MobileGlues keeps the
+	 * real GPU name in the renderer string, so the marker is looked for in every string it
+	 * controls. Can be forced either way with {@code -Dflywheel.mobile=true|false}, which is
+	 * useful both for testing and for other translation layers.
+	 */
+	private static boolean detectMobileGlues() {
+		String forced = System.getProperty("flywheel.mobile");
+		boolean mobile;
+
+		if (forced != null) {
+			mobile = Boolean.parseBoolean(forced);
+		} else {
+			mobile = containsMobileGlues(GL_VENDOR_STRING)
+					|| containsMobileGlues(GL_RENDERER_STRING)
+					|| containsMobileGlues(GL_VERSION_STRING)
+					|| containsMobileGlues(GL_SHADING_LANGUAGE_VERSION_STRING);
+		}
+
+		MobileOptions.mobileDriver = mobile;
+		return mobile;
+	}
+
+	private static boolean containsMobileGlues(String str) {
+		return str.contains("MobileGlues") || str.contains("mobileglues");
 	}
 
 	/**

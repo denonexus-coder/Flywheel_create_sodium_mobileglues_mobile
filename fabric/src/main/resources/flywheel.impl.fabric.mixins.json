@@ -8,7 +8,9 @@
     "ArgumentTypeInfosAccessor",
     "DebugScreenOverlayMixin",
     "MinecraftMixin",
-    "SystemReportMixin"
+    "ParticleEngineMixin",
+    "SystemReportMixin",
+    "TextureAtlasMixin"
   ],
   "injectors": {
     "defaultRequire": 1

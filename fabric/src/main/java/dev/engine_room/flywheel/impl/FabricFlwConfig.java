@@ -16,6 +16,7 @@ import dev.engine_room.flywheel.api.backend.Backend;
 import dev.engine_room.flywheel.api.backend.BackendManager;
 import dev.engine_room.flywheel.backend.BackendConfig;
 import dev.engine_room.flywheel.backend.FlwBackend;
+import dev.engine_room.flywheel.backend.MobileOptions;
 import dev.engine_room.flywheel.backend.compile.LightSmoothness;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.ResourceLocationException;
@@ -34,6 +35,10 @@ public class FabricFlwConfig implements FlwConfig {
 	public static final int WORKER_THREADS_MAX = Runtime.getRuntime()
 			.availableProcessors();
 
+	public static final boolean OIT_DEFAULT = true;
+	public static final boolean DISABLE_PARTICLES_DEFAULT = false;
+	public static final boolean FREEZE_GUI_ITEM_ANIMATION_DEFAULT = false;
+
 	public static final FabricFlwConfig INSTANCE = new FabricFlwConfig(PATH.toFile());
 
 	private final File file;
@@ -42,6 +47,10 @@ public class FabricFlwConfig implements FlwConfig {
 	public boolean useDefaultBackend = true;
 	public boolean limitUpdates = LIMIT_UPDATES_DEFAULT;
 	public int workerThreads = WORKER_THREADS_DEFAULT;
+
+	public boolean oit = OIT_DEFAULT;
+	public boolean disableParticles = DISABLE_PARTICLES_DEFAULT;
+	public boolean freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
 
 	public final FabricBackendConfig backendConfig = new FabricBackendConfig();
 
@@ -100,13 +109,19 @@ public class FabricFlwConfig implements FlwConfig {
 			useDefaultBackend = true;
 			limitUpdates = LIMIT_UPDATES_DEFAULT;
 			workerThreads = WORKER_THREADS_DEFAULT;
+			oit = OIT_DEFAULT;
+			disableParticles = DISABLE_PARTICLES_DEFAULT;
+			freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
+			syncMobileOptions();
 			return;
 		}
 
 		readBackend(object);
 		readLimitUpdates(object);
 		readWorkerThreads(object);
+		readMobile(object);
 		readFlwBackends(object);
+		syncMobileOptions();
 	}
 
 	private void readBackend(JsonObject object) {
@@ -188,12 +203,63 @@ public class FabricFlwConfig implements FlwConfig {
 		}
 	}
 
+	private void readMobile(JsonObject object) {
+		oit = OIT_DEFAULT;
+		disableParticles = DISABLE_PARTICLES_DEFAULT;
+		freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
+
+		var mobileJson = object.get("mobile");
+
+		if (mobileJson == null) {
+			// The whole section is optional, so don't warn when it is missing.
+			return;
+		}
+
+		if (!(mobileJson instanceof JsonObject mobile)) {
+			FlwImpl.CONFIG_LOGGER.warn("'mobile' value must be an object");
+			return;
+		}
+
+		oit = readBoolean(mobile, "oit", OIT_DEFAULT);
+		disableParticles = readBoolean(mobile, "disableParticles", DISABLE_PARTICLES_DEFAULT);
+		freezeGuiItemAnimation = readBoolean(mobile, "freezeGuiItemAnimation", FREEZE_GUI_ITEM_ANIMATION_DEFAULT);
+	}
+
+	private static boolean readBoolean(JsonObject object, String key, boolean defaultValue) {
+		var json = object.get(key);
+
+		if (json instanceof JsonPrimitive primitive && primitive.isBoolean()) {
+			return primitive.getAsBoolean();
+		} else if (json != null) {
+			FlwImpl.CONFIG_LOGGER.warn("'{}' value must be a boolean", key);
+		}
+
+		return defaultValue;
+	}
+
+	/**
+	 * Push the mobile options onto {@link MobileOptions} so the backend can read them
+	 * without depending on this class, and without relying on config load order.
+	 */
+	private void syncMobileOptions() {
+		MobileOptions.oit = oit;
+		MobileOptions.disableParticles = disableParticles;
+		MobileOptions.freezeGuiItemAnimation = freezeGuiItemAnimation;
+	}
+
 	public JsonObject toJson() {
 		JsonObject object = new JsonObject();
 		object.addProperty("backend", useDefaultBackend ? DEFAULT_BACKEND_STR : Backend.REGISTRY.getIdOrThrow(backend).toString());
 		object.addProperty("limitUpdates", limitUpdates);
 		object.addProperty("workerThreads", workerThreads);
 		object.add("flw_backends", backendConfig.toJson());
+
+		JsonObject mobile = new JsonObject();
+		mobile.addProperty("oit", oit);
+		mobile.addProperty("disableParticles", disableParticles);
+		mobile.addProperty("freezeGuiItemAnimation", freezeGuiItemAnimation);
+		object.add("mobile", mobile);
+
 		return object;
 	}
 
