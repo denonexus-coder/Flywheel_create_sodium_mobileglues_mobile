@@ -28,7 +28,6 @@ import dev.engine_room.flywheel.backend.engine.TextureBinder;
 import dev.engine_room.flywheel.backend.engine.embed.EnvironmentStorage;
 import dev.engine_room.flywheel.backend.engine.indirect.OitFramebuffer;
 import dev.engine_room.flywheel.backend.engine.uniform.Uniforms;
-import dev.engine_room.flywheel.backend.gl.TextureBuffer;
 import dev.engine_room.flywheel.backend.gl.array.GlVertexArray;
 import dev.engine_room.flywheel.backend.gl.shader.GlProgram;
 import dev.engine_room.flywheel.lib.material.SimpleMaterial;
@@ -52,7 +51,6 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 	 */
 	private final MeshPool meshPool;
 	private final GlVertexArray vao;
-	private final TextureBuffer instanceTexture;
 	private final InstancedLight light;
 
 	@Nullable
@@ -64,7 +62,6 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 
 		meshPool = new MeshPool();
 		vao = GlVertexArray.create();
-		instanceTexture = new TextureBuffer();
 		light = new InstancedLight();
 
 		meshPool.bind(vao);
@@ -171,7 +168,7 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 
 			Samplers.INSTANCE_BUFFER.makeActive();
 
-			drawCall.render(instanceTexture);
+			drawCall.render();
 		}
 	}
 
@@ -195,7 +192,7 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 
 			Samplers.INSTANCE_BUFFER.makeActive();
 
-			drawCall.render(instanceTexture);
+			drawCall.render();
 		}
 	}
 
@@ -210,7 +207,6 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 		oitDraws.clear();
 
 		meshPool.delete();
-		instanceTexture.delete();
 		programs.release();
 		vao.delete();
 
@@ -294,7 +290,7 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 
 						Samplers.INSTANCE_BUFFER.makeActive();
 
-						draw.renderOne(instanceTexture);
+						draw.renderOne();
 					}
 				}
 			}

@@ -39,6 +39,16 @@ public final class MobileOptions {
 	 */
 	public static boolean freezeGuiItemAnimation;
 
+	/**
+	 * Replace the per-span {@code glBufferSubData} instance uploads with a full orphaned
+	 * re-upload of the instancer's array (see {@code InstancedInstancer#updateBuffer}).
+	 *
+	 * <p>On a driver that stalls sub-data updates against in-flight reads this is much
+	 * cheaper than patching the spans in place; on a desktop driver that renames buffers
+	 * instead, leaving this off is better. Only consulted when {@link #mobileDriver} is set.
+	 */
+	public static boolean orphanInstanceUpload = true;
+
 	private MobileOptions() {
 	}
 }

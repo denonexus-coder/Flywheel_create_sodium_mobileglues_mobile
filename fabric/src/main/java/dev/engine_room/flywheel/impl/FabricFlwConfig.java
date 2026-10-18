@@ -38,6 +38,7 @@ public class FabricFlwConfig implements FlwConfig {
 	public static final boolean OIT_DEFAULT = true;
 	public static final boolean DISABLE_PARTICLES_DEFAULT = false;
 	public static final boolean FREEZE_GUI_ITEM_ANIMATION_DEFAULT = false;
+	public static final boolean ORPHAN_INSTANCE_UPLOAD_DEFAULT = true;
 
 	public static final FabricFlwConfig INSTANCE = new FabricFlwConfig(PATH.toFile());
 
@@ -51,6 +52,7 @@ public class FabricFlwConfig implements FlwConfig {
 	public boolean oit = OIT_DEFAULT;
 	public boolean disableParticles = DISABLE_PARTICLES_DEFAULT;
 	public boolean freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
+	public boolean orphanInstanceUpload = ORPHAN_INSTANCE_UPLOAD_DEFAULT;
 
 	public final FabricBackendConfig backendConfig = new FabricBackendConfig();
 
@@ -112,6 +114,7 @@ public class FabricFlwConfig implements FlwConfig {
 			oit = OIT_DEFAULT;
 			disableParticles = DISABLE_PARTICLES_DEFAULT;
 			freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
+			orphanInstanceUpload = ORPHAN_INSTANCE_UPLOAD_DEFAULT;
 			syncMobileOptions();
 			return;
 		}
@@ -207,6 +210,7 @@ public class FabricFlwConfig implements FlwConfig {
 		oit = OIT_DEFAULT;
 		disableParticles = DISABLE_PARTICLES_DEFAULT;
 		freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
+		orphanInstanceUpload = ORPHAN_INSTANCE_UPLOAD_DEFAULT;
 
 		var mobileJson = object.get("mobile");
 
@@ -223,6 +227,7 @@ public class FabricFlwConfig implements FlwConfig {
 		oit = readBoolean(mobile, "oit", OIT_DEFAULT);
 		disableParticles = readBoolean(mobile, "disableParticles", DISABLE_PARTICLES_DEFAULT);
 		freezeGuiItemAnimation = readBoolean(mobile, "freezeGuiItemAnimation", FREEZE_GUI_ITEM_ANIMATION_DEFAULT);
+		orphanInstanceUpload = readBoolean(mobile, "orphanInstanceUpload", ORPHAN_INSTANCE_UPLOAD_DEFAULT);
 	}
 
 	private static boolean readBoolean(JsonObject object, String key, boolean defaultValue) {
@@ -245,6 +250,7 @@ public class FabricFlwConfig implements FlwConfig {
 		MobileOptions.oit = oit;
 		MobileOptions.disableParticles = disableParticles;
 		MobileOptions.freezeGuiItemAnimation = freezeGuiItemAnimation;
+		MobileOptions.orphanInstanceUpload = orphanInstanceUpload;
 	}
 
 	public JsonObject toJson() {
@@ -258,6 +264,7 @@ public class FabricFlwConfig implements FlwConfig {
 		mobile.addProperty("oit", oit);
 		mobile.addProperty("disableParticles", disableParticles);
 		mobile.addProperty("freezeGuiItemAnimation", freezeGuiItemAnimation);
+		mobile.addProperty("orphanInstanceUpload", orphanInstanceUpload);
 		object.add("mobile", mobile);
 
 		return object;

@@ -17,8 +17,26 @@ public class TextureBuffer extends GlObject {
 	}
 
 	public void bind(int buffer) {
+		attach(buffer);
+	}
+
+	/**
+	 * Point this texture at {@code buffer}'s storage, binding the texture to the current
+	 * texture buffer unit. Only needs to be done once per buffer: re-specifying the
+	 * buffer's data store with {@code glBufferData} keeps the attachment alive.
+	 */
+	public void attach(int buffer) {
 		GL32.glBindTexture(GL32.GL_TEXTURE_BUFFER, handle());
 		GL32.glTexBuffer(GL32.GL_TEXTURE_BUFFER, format, buffer);
+	}
+
+	/**
+	 * Bind this texture to the current texture buffer unit, leaving its storage alone.
+	 * This is the cheap half of {@link #bind(int)} and all that is needed when the buffer
+	 * this texture is attached to has not changed.
+	 */
+	public void bindOnly() {
+		GL32.glBindTexture(GL32.GL_TEXTURE_BUFFER, handle());
 	}
 
 	@Override
