@@ -54,6 +54,13 @@ public class FabricFlwConfig implements FlwConfig {
 	public boolean freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
 	public boolean orphanInstanceUpload = ORPHAN_INSTANCE_UPLOAD_DEFAULT;
 
+	/**
+	 * Whether the config file already records that the mobile defaults were settled - the
+	 * {@code mobileDefaultsApplied} marker. Pushed to {@link MobileOptions#mobileDefaultsRecorded}
+	 * on sync, and written back as {@code true} by {@link #toJson()}.
+	 */
+	private boolean mobileDefaultsRecorded;
+
 	public final FabricBackendConfig backendConfig = new FabricBackendConfig();
 
 	public FabricFlwConfig(File file) {
@@ -112,6 +119,7 @@ public class FabricFlwConfig implements FlwConfig {
 			limitUpdates = LIMIT_UPDATES_DEFAULT;
 			workerThreads = WORKER_THREADS_DEFAULT;
 			oit = OIT_DEFAULT;
+			mobileDefaultsRecorded = false;
 			disableParticles = DISABLE_PARTICLES_DEFAULT;
 			freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
 			orphanInstanceUpload = ORPHAN_INSTANCE_UPLOAD_DEFAULT;
@@ -208,6 +216,7 @@ public class FabricFlwConfig implements FlwConfig {
 
 	private void readMobile(JsonObject object) {
 		oit = OIT_DEFAULT;
+		mobileDefaultsRecorded = false;
 		disableParticles = DISABLE_PARTICLES_DEFAULT;
 		freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
 		orphanInstanceUpload = ORPHAN_INSTANCE_UPLOAD_DEFAULT;
@@ -223,6 +232,12 @@ public class FabricFlwConfig implements FlwConfig {
 			FlwImpl.CONFIG_LOGGER.warn("'mobile' value must be an object");
 			return;
 		}
+
+		// Absent on every profile written before this marker existed, and those are precisely the
+		// ones still carrying a desktop default nobody chose. Once it is present the file alone
+		// decides, which is what lets the in-game toggle survive a restart.
+		var marker = mobile.get("mobileDefaultsApplied");
+		mobileDefaultsRecorded = marker instanceof JsonPrimitive primitive && primitive.isBoolean() && primitive.getAsBoolean();
 
 		oit = readBoolean(mobile, "oit", OIT_DEFAULT);
 		disableParticles = readBoolean(mobile, "disableParticles", DISABLE_PARTICLES_DEFAULT);
@@ -251,6 +266,16 @@ public class FabricFlwConfig implements FlwConfig {
 		MobileOptions.disableParticles = disableParticles;
 		MobileOptions.freezeGuiItemAnimation = freezeGuiItemAnimation;
 		MobileOptions.orphanInstanceUpload = orphanInstanceUpload;
+
+		// Hand over what the file recorded, then let the defaults claim whatever it did not. Doing
+		// this here and again from the driver detection makes the outcome independent of which of
+		// the two runs first.
+		MobileOptions.mobileDefaultsRecorded = mobileDefaultsRecorded;
+		MobileOptions.applyMobileDefaults();
+
+		// Take back whatever the defaults decided, so the save persists what is actually in effect
+		// instead of the stale desktop value the file arrived with.
+		oit = MobileOptions.oit;
 	}
 
 	public JsonObject toJson() {
@@ -265,6 +290,10 @@ public class FabricFlwConfig implements FlwConfig {
 		mobile.addProperty("disableParticles", disableParticles);
 		mobile.addProperty("freezeGuiItemAnimation", freezeGuiItemAnimation);
 		mobile.addProperty("orphanInstanceUpload", orphanInstanceUpload);
+		// From the runtime state rather than the local field: on a profile with no file yet the
+		// defaults run without this class ever reading one, and that session must still be able to
+		// record itself as settled or the defaults would keep running over the user's choices.
+		mobile.addProperty("mobileDefaultsApplied", MobileOptions.mobileDefaultsRecorded);
 		object.add("mobile", mobile);
 
 		return object;

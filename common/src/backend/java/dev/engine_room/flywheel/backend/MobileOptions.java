@@ -49,6 +49,43 @@ public final class MobileOptions {
 	 */
 	public static boolean orphanInstanceUpload = true;
 
+	/**
+	 * True once the config file has recorded that the mobile defaults have been settled.
+	 *
+	 * <p>This exists because the platform config writes every mobile key on each save, so an
+	 * install that has run before already carries a value for {@link #oit} even though nobody
+	 * ever chose one - that value is just the desktop default echoed back. Comparing against a
+	 * stored value can never separate the two, so instead the first load applies the mobile
+	 * defaults exactly once and the save marks them as dealt with. From that point on the file
+	 * is the only authority, which is what makes the in-game toggle stick across restarts.
+	 *
+	 * <p>False until the config says otherwise, so a profile with no file at all still gets the
+	 * defaults.
+	 */
+	public static boolean mobileDefaultsRecorded;
+
 	private MobileOptions() {
+	}
+
+	/**
+	 * Apply the mobile defaults to the switches that have one, once per profile.
+	 *
+	 * <p>Called from both places that can run first - when the config is loaded, and when the GL
+	 * strings are finally read. Neither cares which came first: the first call through does the
+	 * work and the file marks it done on the next save, so a config written before the GL context
+	 * existed can still have its stale desktop default corrected.
+	 */
+	public static void applyMobileDefaults() {
+		if (mobileDefaultsRecorded) {
+			return;
+		}
+
+		if (mobileDriver) {
+			oit = false;
+		}
+
+		// Resolved for this session either way. The save writes this back out, so a profile that
+		// had no marker gets one and stops re-running the defaults over the user's choices.
+		mobileDefaultsRecorded = true;
 	}
 }

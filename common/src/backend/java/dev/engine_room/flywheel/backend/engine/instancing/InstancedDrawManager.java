@@ -25,6 +25,7 @@ import dev.engine_room.flywheel.backend.engine.MaterialEncoder;
 import dev.engine_room.flywheel.backend.engine.MaterialRenderState;
 import dev.engine_room.flywheel.backend.engine.MeshPool;
 import dev.engine_room.flywheel.backend.engine.TextureBinder;
+import dev.engine_room.flywheel.backend.engine.embed.Environment;
 import dev.engine_room.flywheel.backend.engine.embed.EnvironmentStorage;
 import dev.engine_room.flywheel.backend.engine.indirect.OitFramebuffer;
 import dev.engine_room.flywheel.backend.engine.uniform.Uniforms;
@@ -35,9 +36,70 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.model.ModelBakery;
 
 public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
-	private static final Comparator<InstancedDraw> DRAW_COMPARATOR = Comparator.comparingInt(InstancedDraw::bias)
-			.thenComparingInt(InstancedDraw::indexOfMeshInModel)
-			.thenComparing(InstancedDraw::material, MaterialRenderState.COMPARATOR);
+	/**
+	 * Draw order, most significant key first:
+	 *
+	 * <ol>
+	 *     <li>{@code bias}. The API promises instancers render in ascending bias, so this key
+	 *     cannot move - every other key is a tie-break underneath it.</li>
+	 *     <li>Context shader, then instance type. Together with the material these three name
+	 *     the GL program, so grouping by them is what lets {@link #submitDraws} find the program
+	 *     it already has bound instead of calling {@code glUseProgram} for every draw.</li>
+	 *     <li>Material, through {@link MaterialRenderState#COMPARATOR}, which sorts by
+	 *     {@link Transparency} first. Because {@link Transparency#OPAQUE} is the first constant,
+	 *     every solid part of a bucket is drawn before any blended part, and it also does so
+	 *     without ever unbinding the shader.</li>
+	 *     <li>Mesh index, so the parts of one model that share a material keep the order the
+	 *     model defines them in.</li>
+	 * </ol>
+	 *
+	 * <p>Written as a plain method rather than a chained comparator so the key order is visible
+	 * in one place and the compiler never has to guess which {@code thenComparing} overload a
+	 * lambda belongs to.
+	 */
+	private static final Comparator<InstancedDraw> DRAW_COMPARATOR = InstancedDrawManager::compareDraws;
+
+	private static int compareDraws(InstancedDraw lhs, InstancedDraw rhs) {
+		int cmp = Integer.compare(lhs.bias(), rhs.bias());
+		if (cmp != 0) {
+			return cmp;
+		}
+
+		cmp = Integer.compare(lhs.groupKey.environment()
+				.contextShader()
+				.ordinal(), rhs.groupKey.environment()
+						.contextShader()
+						.ordinal());
+		if (cmp != 0) {
+			return cmp;
+		}
+
+		// Namespace then path rather than Comparable: it groups by the shader each instance type
+		// compiles against without betting on an interface the class may not declare, and a pair
+		// that fails to group only costs one extra bind, never a wrong one - submitDraws compares
+		// the program object itself.
+		var lhsType = lhs.groupKey.instanceType()
+				.vertexShader();
+		var rhsType = rhs.groupKey.instanceType()
+				.vertexShader();
+
+		cmp = lhsType.getNamespace().compareTo(rhsType.getNamespace());
+		if (cmp != 0) {
+			return cmp;
+		}
+
+		cmp = lhsType.getPath().compareTo(rhsType.getPath());
+		if (cmp != 0) {
+			return cmp;
+		}
+
+		cmp = MaterialRenderState.COMPARATOR.compare(lhs.material(), rhs.material());
+		if (cmp != 0) {
+			return cmp;
+		}
+
+		return Integer.compare(lhs.indexOfMeshInModel(), rhs.indexOfMeshInModel());
+	}
 
 	private final List<InstancedDraw> allDraws = new ArrayList<>();
 	private boolean needSort = false;
@@ -148,23 +210,63 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 		TextureBinder.resetLightAndOverlay();
 	}
 
+	/**
+	 * Draw every opaque and ordinarily blended draw call, skipping whatever the previous draw
+	 * already put in place.
+	 *
+	 * <p>All the tracked state is local to this call on purpose. The OIT path interleaves these
+	 * loops with full screen passes of its own, and those bind their own program and touch the
+	 * framebuffer, so state carried across loops could have the loop swear a program or a
+	 * material is bound when it no longer is. Starting each loop cold costs one redundant bind
+	 * and buys a correctness that cannot be argued with.
+	 */
 	private void submitDraws() {
+		GlProgram boundProgram = null;
+		Material uploadedMaterial = null;
+		Environment setupEnvironment = null;
+		Material statedMaterial = null;
+		int uploadedBaseVertex = -1;
+
 		for (var drawCall : draws) {
 			var material = drawCall.material();
 			var groupKey = drawCall.groupKey;
 			var environment = groupKey.environment();
 
 			var program = programs.get(groupKey.instanceType(), environment.contextShader(), material, PipelineCompiler.OitMode.OFF);
-			program.bind();
 
-			environment.setupDraw(program);
+			if (program != boundProgram) {
+				// A freshly bound program has none of our uniforms in it yet.
+				program.bind();
+				boundProgram = program;
 
-			uploadMaterialUniform(program, material);
+				environment.setupDraw(program);
+				setupEnvironment = environment;
 
-			program.setUInt("_flw_baseVertex", drawCall.mesh()
-					.baseVertex());
+				uploadedMaterial = null;
+				uploadedBaseVertex = -1;
+			} else if (environment != setupEnvironment) {
+				environment.setupDraw(program);
+				setupEnvironment = environment;
+			}
 
-			MaterialRenderState.setup(material);
+			if (uploadedMaterial == null || !MaterialRenderState.materialEquals(material, uploadedMaterial)) {
+				uploadMaterialUniform(program, material);
+				uploadedMaterial = material;
+			}
+
+			int baseVertex = drawCall.mesh()
+					.baseVertex();
+			if (baseVertex != uploadedBaseVertex) {
+				program.setUInt("_flw_baseVertex", baseVertex);
+				uploadedBaseVertex = baseVertex;
+			}
+
+			// Plain GL state, independent of which program is bound, so it survives a program
+			// switch and is only re-asserted when the material actually changes.
+			if (statedMaterial == null || !MaterialRenderState.materialEquals(material, statedMaterial)) {
+				MaterialRenderState.setup(material);
+				statedMaterial = material;
+			}
 
 			Samplers.INSTANCE_BUFFER.makeActive();
 
@@ -172,23 +274,56 @@ public class InstancedDrawManager extends DrawManager<InstancedInstancer<?>> {
 		}
 	}
 
+	/**
+	 * The OIT counterpart of {@link #submitDraws}, with the same local-only state for the same
+	 * reason: a full screen pass runs between every call and rebinds a program of its own.
+	 */
 	private void submitOitDraws(PipelineCompiler.OitMode mode) {
+		GlProgram boundProgram = null;
+		Material uploadedMaterial = null;
+		Environment setupEnvironment = null;
+		Material statedMaterial = null;
+		int uploadedBaseVertex = -1;
+
 		for (var drawCall : oitDraws) {
 			var material = drawCall.material();
 			var groupKey = drawCall.groupKey;
 			var environment = groupKey.environment();
 
 			var program = programs.get(groupKey.instanceType(), environment.contextShader(), material, mode);
-			program.bind();
 
-			environment.setupDraw(program);
+			if (program != boundProgram) {
+				program.bind();
+				boundProgram = program;
 
-			uploadMaterialUniform(program, material);
+				environment.setupDraw(program);
+				setupEnvironment = environment;
 
-			program.setUInt("_flw_baseVertex", drawCall.mesh()
-					.baseVertex());
+				uploadedMaterial = null;
+				uploadedBaseVertex = -1;
+			} else if (environment != setupEnvironment) {
+				environment.setupDraw(program);
+				setupEnvironment = environment;
+			}
 
-			MaterialRenderState.setupOit(material);
+			if (uploadedMaterial == null || !MaterialRenderState.materialEquals(material, uploadedMaterial)) {
+				uploadMaterialUniform(program, material);
+				uploadedMaterial = material;
+			}
+
+			int baseVertex = drawCall.mesh()
+					.baseVertex();
+			if (baseVertex != uploadedBaseVertex) {
+				program.setUInt("_flw_baseVertex", baseVertex);
+				uploadedBaseVertex = baseVertex;
+			}
+
+			// setupOit reads the write mask but not the blend mode, and materialEquals compares
+			// both, so re-running it on a material change is conservative rather than excessive.
+			if (statedMaterial == null || !MaterialRenderState.materialEquals(material, statedMaterial)) {
+				MaterialRenderState.setupOit(material);
+				statedMaterial = material;
+			}
 
 			Samplers.INSTANCE_BUFFER.makeActive();
 

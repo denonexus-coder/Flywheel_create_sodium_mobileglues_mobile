@@ -17,8 +17,11 @@ import static org.lwjgl.opengl.GL31.GL_INVALID_INDEX;
 import static org.lwjgl.opengl.GL31.glGetUniformBlockIndex;
 import static org.lwjgl.opengl.GL31.glUniformBlockBinding;
 
+import java.nio.FloatBuffer;
+
 import org.joml.Matrix3fc;
 import org.joml.Matrix4fc;
+import org.lwjgl.BufferUtils;
 import org.slf4j.Logger;
 
 import com.mojang.blaze3d.shaders.ProgramManager;
@@ -33,6 +36,20 @@ public class GlProgram extends GlObject {
 	private static final Logger LOGGER = LogUtils.getLogger();
 
 	private final Object2IntMap<String> uniformLocationCache = new Object2IntOpenHashMap<>();
+
+	/**
+	 * Scratch storage shared by every matrix uniform upload.
+	 *
+	 * <p>Matrix uniforms are only ever uploaded from the render thread, and the driver copies the
+	 * array out before the call returns, so one instance per size is enough for the whole JVM.
+	 * Without them every draw call that carries a pose hands a fresh {@code new float[16]} to the
+	 * garbage collector - a steady per-frame allocation aimed straight at the weakest CPU in the
+	 * box.
+	 */
+	private static final float[] MATRIX4_ARRAY = new float[16];
+	private static final float[] MATRIX3_ARRAY = new float[9];
+	private static final FloatBuffer MATRIX4_BUFFER = BufferUtils.createFloatBuffer(16);
+	private static final FloatBuffer MATRIX3_BUFFER = BufferUtils.createFloatBuffer(9);
 
 	public GlProgram(int handle) {
 		handle(handle);
@@ -93,7 +110,11 @@ public class GlProgram extends GlObject {
 			return;
 		}
 
-		glUniformMatrix4fv(uniform, false, matrix.get(new float[16]));
+		matrix.get(MATRIX4_ARRAY);
+		MATRIX4_BUFFER.clear();
+		MATRIX4_BUFFER.put(MATRIX4_ARRAY);
+		MATRIX4_BUFFER.flip();
+		glUniformMatrix4fv(uniform, false, MATRIX4_BUFFER);
 	}
 
 	public void setMat3(String glslName, Matrix3fc matrix) {
@@ -103,7 +124,11 @@ public class GlProgram extends GlObject {
 			return;
 		}
 
-		glUniformMatrix3fv(uniform, false, matrix.get(new float[9]));
+		matrix.get(MATRIX3_ARRAY);
+		MATRIX3_BUFFER.clear();
+		MATRIX3_BUFFER.put(MATRIX3_ARRAY);
+		MATRIX3_BUFFER.flip();
+		glUniformMatrix3fv(uniform, false, MATRIX3_BUFFER);
 	}
 
 	public void setBool(String glslName, boolean bool) {

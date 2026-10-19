@@ -209,6 +209,9 @@ public final class GlCompat {
 		}
 
 		MobileOptions.mobileDriver = mobile;
+		// Do this second, not as the field's initializer: the config may have been read before
+		// there was a GL context to ask, so this is often the first point either side knows.
+		MobileOptions.applyMobileDefaults();
 		return mobile;
 	}
 
