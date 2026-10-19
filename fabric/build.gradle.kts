@@ -131,6 +131,11 @@ dependencies {
 
     modCompileOnly("maven.modrinth:sodium:${property("sodium_version")}")
 
+    // Colorwheel (Iris shader compatibility, vendored into this jar)
+    modCompileOnly("maven.modrinth:iris:${property("iris_version")}")
+    compileOnly("io.github.douira:glsl-transformer:2.0.1")
+    compileOnly("org.anarres:jcpp:1.4.14")
+
     "forApi"(project(path = common, configuration = "apiClasses"))
     "forLib"(project(path = common, configuration = "libClasses"))
     "forBackend"(project(path = common, configuration = "backendClasses"))

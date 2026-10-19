@@ -1,0 +1,464 @@
+package dev.djefrey.colorwheel.compile.transform;
+
+import io.github.douira.glsl_transformer.ast.node.Identifier;
+import io.github.douira.glsl_transformer.ast.node.TranslationUnit;
+import io.github.douira.glsl_transformer.ast.node.Version;
+import io.github.douira.glsl_transformer.ast.node.declaration.DeclarationMember;
+import io.github.douira.glsl_transformer.ast.node.declaration.TypeAndInitDeclaration;
+import io.github.douira.glsl_transformer.ast.node.expression.LiteralExpression;
+import io.github.douira.glsl_transformer.ast.node.expression.ReferenceExpression;
+import io.github.douira.glsl_transformer.ast.node.expression.binary.AdditionExpression;
+import io.github.douira.glsl_transformer.ast.node.expression.binary.ArrayAccessExpression;
+import io.github.douira.glsl_transformer.ast.node.expression.unary.GroupingExpression;
+import io.github.douira.glsl_transformer.ast.node.external_declaration.DeclarationExternalDeclaration;
+import io.github.douira.glsl_transformer.ast.node.external_declaration.ExternalDeclaration;
+import io.github.douira.glsl_transformer.ast.node.type.qualifier.LayoutQualifier;
+import io.github.douira.glsl_transformer.ast.node.type.qualifier.NamedLayoutQualifierPart;
+import io.github.douira.glsl_transformer.ast.node.type.qualifier.StorageQualifier;
+import io.github.douira.glsl_transformer.ast.node.type.qualifier.TypeQualifier;
+import io.github.douira.glsl_transformer.ast.node.type.specifier.BuiltinNumericTypeSpecifier;
+import io.github.douira.glsl_transformer.ast.print.PrintType;
+import io.github.douira.glsl_transformer.ast.query.Root;
+import io.github.douira.glsl_transformer.ast.query.RootSupplier;
+import io.github.douira.glsl_transformer.ast.query.match.AutoHintedMatcher;
+import io.github.douira.glsl_transformer.ast.transform.ASTInjectionPoint;
+import io.github.douira.glsl_transformer.ast.transform.Template;
+import io.github.douira.glsl_transformer.parser.ParseShape;
+import io.github.douira.glsl_transformer.util.Type;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
+import net.irisshaders.iris.gl.texture.TextureType;
+import net.irisshaders.iris.helpers.Tri;
+import net.irisshaders.iris.pipeline.transform.PatchShaderType;
+import net.irisshaders.iris.pipeline.transform.transformer.CommonTransformer;
+import net.irisshaders.iris.shaderpack.texture.TextureStage;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+public class ClrwlTransformPatcher
+{
+	private static final ClrwlASTTransformer<ClrwlTransformParameters> transformer;
+	public static final Pattern versionPattern = Pattern.compile("^.*#version\\h+(\\d+)\\V*", Pattern.DOTALL);
+	public static final Pattern extensionPattern = Pattern.compile("^.*#extension\\s+([a-zA-Z0-9_]+)\\s+:\\s+([a-zA-Z0-9_]+)", Pattern.DOTALL);
+
+	private static final String LIGHTMAP_SCALE = "1.0 / 240.0";
+	private static final String LIGHTMAP_OFFSET = "0.03125";
+	private static final String LIGHTMAP_MATRIX = String.format("mat4(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+				LIGHTMAP_SCALE, "0.0",			  "0.0", "0.0",
+				"0.0", 			LIGHTMAP_SCALE,   "0.0", "0.0",
+				"0.0", 			"0.0", 			  "1.0", "0.0",
+				LIGHTMAP_OFFSET, LIGHTMAP_OFFSET, "0.0", "1.0"
+			);
+
+	private static final AutoHintedMatcher<ExternalDeclaration> fragdataLayoutDeclaration = new AutoHintedMatcher<>("layout (location = __index) out vec4 __name;", ParseShape.EXTERNAL_DECLARATION)
+	{
+		{
+			markClassedPredicateWildcard("__index",
+					pattern.getRoot().identifierIndex.getUnique("__index").getAncestor(ReferenceExpression.class),
+					LiteralExpression.class,
+					literalExpression -> literalExpression.isInteger() && literalExpression.getInteger() >= 0);
+
+			markClassWildcard("__name",
+					pattern.getRoot().identifierIndex.getUnique("__name").getAncestor(DeclarationMember.class));
+		}
+	};
+
+	private static final AutoHintedMatcher<ExternalDeclaration> fragdataOutDeclaration = new AutoHintedMatcher<>("out vec4 __name;", ParseShape.EXTERNAL_DECLARATION)
+	{
+		{
+			markClassedPredicateWildcard("__name",
+					pattern.getRoot().identifierIndex.getUnique("__name").getAncestor(DeclarationMember.class),
+					DeclarationMember.class,
+					declarationMember -> declarationMember.getName().getName().matches("outColor\\d+$"));
+		}
+	};
+
+	private static final Template<ExternalDeclaration> outputGlobalVarDeclaration;
+
+	static
+	{
+		outputGlobalVarDeclaration = Template.withExternalDeclaration("vec4 __name;");
+		outputGlobalVarDeclaration.markIdentifierReplacement("__name");
+
+		transformer = new ClrwlASTTransformer<>()
+		{
+			{
+				setRootSupplier(RootSupplier.PREFIX_UNORDERED_ED_EXACT);
+			}
+
+			@Override
+			public TranslationUnit parseTranslationUnit(Root rootInstance, String input)
+			{
+				var versionMatcher = versionPattern.matcher(input);
+
+				if (!versionMatcher.find()) {
+					throw new IllegalArgumentException(
+							"No #version directive found in source code! See debugging.md for more information.");
+				}
+
+				transformer.getLexer().version = Version.fromNumber(Integer.parseInt(versionMatcher.group(1)));
+
+				input = versionMatcher.replaceAll(""); // Remove version tag, replaced by Flywheel's one
+
+				var extensionMatcher = extensionPattern.matcher(input);  // Remove all extensions
+				input = extensionMatcher.replaceAll("");
+
+				return super.parseTranslationUnit(rootInstance, input);
+			}
+		};
+
+		transformer.setPrintType(PrintType.INDENTED);
+
+		transformer.setTransformation((tree, root, parameters) ->
+		{
+			tree.outputOptions.enablePrintInfo();
+
+			Map<Integer, String> outputs = new HashMap<>();
+
+			root.indexBuildSession(() ->
+			{
+				root.replaceReferenceExpressions(transformer, "gl_Vertex", "flw_vertexPos");
+				root.replaceReferenceExpressions(transformer, "gl_Normal", "flw_vertexNormal");
+				root.replaceReferenceExpressions(transformer, "gl_Color", "flw_vertexColor");
+				replaceVec4WithVariableDimension(root, "at_midBlock", "clrwl_vertexMidMesh");
+				replaceVec4WithVariableDimension(root, "at_tangent", "clrwl_vertexTangent");
+				replaceVec2WithVariableDimension(root, "mc_midTexCoord", "clrwl_vertexMidTexCoord");
+				replaceVec2WithVariableDimension(root, "mc_Entity", "clrwl_vertexEntity");
+
+				root.replaceReferenceExpressions(transformer, "gl_MultiTexCoord0", "vec4(flw_vertexTexCoord, 0.0, 1.0)");
+				root.replaceReferenceExpressions(transformer, "gl_MultiTexCoord1",  "vec4(flw_vertexLight * 240.0, 0.0, 1.0)");
+				root.replaceReferenceExpressions(transformer, "gl_MultiTexCoord2",  "vec4(flw_vertexLight * 240.0, 0.0, 1.0)");
+
+				root.rename("renderStage", "_clrwl_renderPhase");
+				root.rename("blendFunc", "_clrwl_blendFunc");
+				root.rename("atlasSize", "_clrwl_atlasSize");
+				root.replaceReferenceExpressions(transformer, "blockEntityId", "_clrwl_blockEntityId");
+				root.replaceReferenceExpressions(transformer, "entityId", "_clrwl_entityId");
+				root.replaceReferenceExpressions(transformer, "entityColor", "clrwl_overlayColor");
+
+				root.replaceReferenceExpressions(transformer, "gl_ModelViewMatrix", "flw_view");
+				root.replaceReferenceExpressions(transformer, "modelViewMatrix", "flw_view");
+				root.replaceReferenceExpressions(transformer, "gl_ModelViewMatrixInverse", "flw_viewInverse");
+				root.replaceReferenceExpressions(transformer, "modelViewMatrixInverse", "flw_viewInverse");
+
+				root.replaceReferenceExpressions(transformer, "gl_ProjectionMatrix", "flw_projection");
+				root.replaceReferenceExpressions(transformer, "projectionMatrix", "flw_projection");
+				root.replaceReferenceExpressions(transformer, "gl_ProjectionMatrixInverse", "flw_projectionInverse");
+				root.replaceReferenceExpressions(transformer, "projectionMatrixInverse", "flw_projectionInverse	");
+
+				root.replaceReferenceExpressions(transformer, "gl_ModelViewProjectionMatrix", "flw_viewProjection");
+				root.replaceReferenceExpressions(transformer, "modelViewProjectionMatrix", "flw_viewProjection");
+				root.replaceReferenceExpressions(transformer, "gl_ModelViewProjectionMatrixInverse", "flw_viewProjectionInverse");
+				root.replaceReferenceExpressions(transformer, "modelViewProjectionMatrixInverse", "flw_viewProjectionInverse");
+
+				root.replaceExpressionMatches(transformer, CommonTransformer.glTextureMatrix0, "mat4(1.0)");
+				root.replaceReferenceExpressions(transformer, "textureMatrix", "mat4(1.0)");
+				root.replaceExpressionMatches(transformer, CommonTransformer.glTextureMatrix1, LIGHTMAP_MATRIX);
+				root.replaceExpressionMatches(transformer, CommonTransformer.glTextureMatrix2, LIGHTMAP_MATRIX);
+
+				root.replaceReferenceExpressions(transformer, "gl_NormalMatrix", "clrwl_normal");
+				root.replaceReferenceExpressions(transformer, "normalMatrix", "clrwl_normal");
+
+				root.replaceReferenceExpressions(transformer, "clrwl_view", "flw_view");
+				root.replaceReferenceExpressions(transformer, "clrwl_viewInverse", "flw_viewInverse");
+				root.replaceReferenceExpressions(transformer, "clrwl_viewPrev", "flw_viewPrev");
+				root.replaceReferenceExpressions(transformer, "clrwl_projection", "flw_projection");
+				root.replaceReferenceExpressions(transformer, "clrwl_projectionInverse", "flw_projectionInverse");
+				root.replaceReferenceExpressions(transformer, "clrwl_projectionPrev", "flw_projectionPrev");
+				root.replaceReferenceExpressions(transformer, "clrwl_viewProjection", "flw_viewProjection");
+				root.replaceReferenceExpressions(transformer, "clrwl_viewProjectionInverse", "flw_viewProjectionInverse");
+				root.replaceReferenceExpressions(transformer, "clrwl_viewProjectionPrev", "flw_viewProjectionPrev");
+				root.replaceReferenceExpressions(transformer, "clrwl_renderOrigin", "flw_renderOrigin");
+				root.replaceReferenceExpressions(transformer, "clrwl_cameraPos", "flw_cameraPos");
+
+				root.rename("clrwl_vertexPos", "flw_vertexPos");
+				root.rename("clrwl_vertexColor", "flw_vertexColor");
+				root.rename("clrwl_vertexTexCoord", "flw_vertexTexCoord");
+				root.rename("clrwl_vertexOverlay", "flw_vertexOverlay");
+				root.rename("clrwl_vertexLight", "flw_vertexLight");
+				root.rename("clrwl_vertexNormal", "flw_vertexNormal");
+				root.rename("clrwl_distance", "flw_distance");
+
+				root.replaceReferenceExpressions(transformer, "clrwl_materialFragment", "_clrwl_materialFragment_hook");
+				root.replaceReferenceExpressions(transformer, "clrwl_shaderLight", "_clrwl_shaderLight_hook");
+
+				if (parameters.getSSBOOffset() > 0)
+				{
+					for (var storageQualifier : root.nodeIndex.get(StorageQualifier.class))
+					{
+						if (storageQualifier.storageType != StorageQualifier.StorageType.BUFFER)
+						{
+							continue;
+						}
+
+						if (storageQualifier.getParent() instanceof TypeQualifier typeQualifier)
+						{
+							LayoutQualifier layoutQualifier = null;
+
+							for (var qualifier : typeQualifier.getParts())
+							{
+								if (qualifier instanceof LayoutQualifier lq)
+								{
+									layoutQualifier = lq;
+									break;
+								}
+							}
+
+							if (layoutQualifier != null)
+							{
+								for (var part : layoutQualifier.getParts())
+								{
+									if (part instanceof NamedLayoutQualifierPart namedPart)
+									{
+										if (namedPart.getName().getName().equals("binding"))
+										{
+											var left = new GroupingExpression(namedPart.getExpression());
+											var right = new LiteralExpression(Type.INT32, parameters.getSSBOOffset());
+											var addExp = new AdditionExpression(left, right);
+											namedPart.setExpression(addExp);
+											break;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+
+				if (parameters.type == PatchShaderType.FRAGMENT)
+				{
+					if (root.identifierIndex.has("gl_FragColor"))
+					{
+						root.replaceReferenceExpressions(transformer, "gl_FragColor", "gl_FragData[0]");
+					}
+
+					Map<ArrayAccessExpression, Integer> glFragDataAccess = new HashMap<>();
+					Set<Integer> glFragDataIndexes = new HashSet<>();
+
+					for (Identifier id : root.identifierIndex.get("gl_FragData"))
+					{
+						var access = id.getAncestor(ArrayAccessExpression.class);
+						var idx = ((LiteralExpression) access.getRight()).getInteger();
+
+						glFragDataAccess.put(access, (int) idx);
+						glFragDataIndexes.add((int) idx);
+					}
+
+					if (parameters.usesCustomOutputs())
+					{
+						for (var kv : glFragDataAccess.entrySet())
+						{
+							kv.getKey().replaceByAndDelete(new ReferenceExpression(new Identifier("clrwl_FragData" + kv.getValue())));
+							outputs.putIfAbsent(kv.getValue(), "clrwl_FragData" + kv.getValue());
+						}
+
+						for (var index : glFragDataIndexes)
+						{
+							tree.injectNode(ASTInjectionPoint.BEFORE_FUNCTIONS, outputGlobalVarDeclaration.getInstanceFor(root, new Identifier("clrwl_FragData" + index)));
+						}
+					}
+					else
+					{
+						for (var kv : glFragDataAccess.entrySet())
+						{
+							outputs.putIfAbsent(kv.getValue(), "iris_FragData" + kv.getValue());
+						}
+					}
+
+					Map<DeclarationExternalDeclaration, String> outDeclarations = new HashMap<>();
+
+					for (var declaration : root.nodeIndex.get(DeclarationExternalDeclaration.class))
+					{
+						if (fragdataLayoutDeclaration.matchesExtract(declaration))
+						{
+							var index = fragdataLayoutDeclaration.getNodeMatch("__index", LiteralExpression.class).getInteger();
+							var name = fragdataLayoutDeclaration.getNodeMatch("__name", DeclarationMember.class).getName().getName();
+
+							outputs.putIfAbsent((int) index, name);
+							outDeclarations.put(declaration, name);
+						}
+						else if (fragdataOutDeclaration.matchesExtract(declaration))
+						{
+							var name = fragdataOutDeclaration.getNodeMatch("__name", DeclarationMember.class).getName().getName();
+							var index = Long.parseLong(name.substring(8));
+
+							outputs.putIfAbsent((int) index, name);
+							outDeclarations.put(declaration, name);
+						}
+					}
+
+					if (parameters.usesCustomOutputs())
+					{
+						for (var entry : outDeclarations.entrySet())
+						{
+							entry.getKey().replaceByAndDelete(outputGlobalVarDeclaration.getInstanceFor(root, new Identifier(entry.getValue())));
+						}
+					}
+				}
+
+				CommonTransformer.transform(transformer, tree, root, parameters, false);
+
+				if (!parameters.isCrumbling())
+				{
+					root.replaceReferenceExpressions(transformer, "tex", "flw_diffuseTex");
+					root.replaceReferenceExpressions(transformer, "gtexture", "flw_diffuseTex");
+				}
+				else
+				{
+					root.replaceReferenceExpressions(transformer, "tex", "_flw_crumblingTex");
+					root.replaceReferenceExpressions(transformer, "gtexture", "_flw_crumblingTex");
+				}
+
+				root.rename("main", "_clrwl_shader_main");
+			});
+
+			return outputs;
+		});
+	}
+
+	private static int getAttributeDimensionAndDelete(Root root, String name, int defaultDimension)
+	{
+		int dimension = defaultDimension;
+
+		for (Identifier identifier : root.identifierIndex.get(name))
+		{
+			TypeAndInitDeclaration initDecl = (TypeAndInitDeclaration) identifier.getAncestor(2, 0, TypeAndInitDeclaration.class::isInstance);
+
+			if (initDecl == null)
+			{
+				continue;
+			}
+
+			DeclarationExternalDeclaration extDecl = (DeclarationExternalDeclaration) initDecl.getAncestor(1, 0, DeclarationExternalDeclaration.class::isInstance);
+
+			if (extDecl == null)
+			{
+				continue;
+			}
+
+			if (initDecl.getType().getTypeSpecifier() instanceof BuiltinNumericTypeSpecifier numType)
+			{
+				switch (numType.type)
+				{
+					case FLOAT32 ->
+					{
+						dimension = 1;
+					}
+
+					case F32VEC2 ->
+					{
+						dimension = 2;
+                    }
+
+					case F32VEC3 ->
+					{
+						dimension = 3;
+                    }
+
+					case F32VEC4 ->
+					{
+						dimension = 4;
+                    }
+				}
+			}
+
+			extDecl.detachAndDelete();
+			initDecl.detachAndDelete();
+			identifier.detachAndDelete();
+
+			break;
+		}
+
+		return dimension;
+	}
+
+	private static void replaceVec2WithVariableDimension(Root root, String name, String vec2)
+	{
+		int dimension = getAttributeDimensionAndDelete(root, name, 2);
+
+		if (dimension == 1)
+		{
+			root.replaceReferenceExpressions(transformer, name, vec2 + ".x");
+		}
+		else if (dimension == 2)
+		{
+			root.replaceReferenceExpressions(transformer, name, vec2);
+		}
+		else if (dimension == 3)
+		{
+			root.replaceReferenceExpressions(transformer, name, "vec3(" + vec2 + ", 0.0)");
+		}
+		else
+		{
+			root.replaceReferenceExpressions(transformer, name, "vec4(" + vec2 + ", 0.0, 1.0)");
+		}
+	}
+
+	private static void replaceVec4WithVariableDimension(Root root, String name, String vec4)
+	{
+		int dimension = getAttributeDimensionAndDelete(root, name, 4);
+
+		if (dimension == 1)
+		{
+			root.replaceReferenceExpressions(transformer, name, vec4 + ".x");
+		}
+		else if (dimension == 2)
+		{
+			root.replaceReferenceExpressions(transformer, name, vec4 + ".xy");
+		}
+		else if (dimension == 3)
+		{
+			root.replaceReferenceExpressions(transformer, name, vec4 + ".xyz");
+		}
+		else
+		{
+			root.replaceReferenceExpressions(transformer, name, vec4);
+		}
+	}
+
+	private static void replaceFilledVec2WithVariableDimension(Root root, String name, String value)
+	{
+		int dimension = getAttributeDimensionAndDelete(root, name, 2);
+
+		if (dimension == 1)
+		{
+			root.replaceReferenceExpressions(transformer, name, "(" + value + ")");
+		}
+		else if (dimension == 2)
+		{
+			root.replaceReferenceExpressions(transformer, name, "vec2(" + value + ")");
+		}
+		else if (dimension == 3)
+		{
+			root.replaceReferenceExpressions(transformer, name, "vec3(vec2(" + value + "), 0.0)");
+		}
+		else
+		{
+			root.replaceReferenceExpressions(transformer, name, "vec4(vec2(" + value + "), 0.0, 1.0)");
+		}
+	}
+
+	public static String patchVertex(String vertex, boolean isCrumbling, int ssboOffset, Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap)
+	{
+		var parameters = new ClrwlTransformParameters(PatchShaderType.VERTEX, isCrumbling, false, ssboOffset, textureMap);
+
+		return transformer.transform(vertex, parameters).code();
+	}
+
+	public static String patchGeometry(String vertex, boolean isCrumbling, int ssboOffset, Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap)
+	{
+		var parameters = new ClrwlTransformParameters(PatchShaderType.GEOMETRY, isCrumbling, false, ssboOffset, textureMap);
+
+		return transformer.transform(vertex, parameters).code();
+	}
+
+	public static ClrwlTransformOutput patchFragment(String fragment, boolean isCrumbling, boolean customOutputs, int ssboOffset, Object2ObjectMap<Tri<String, TextureType, TextureStage>, String> textureMap)
+	{
+		var parameters = new ClrwlTransformParameters(PatchShaderType.FRAGMENT, isCrumbling, customOutputs, ssboOffset, textureMap);
+
+		return transformer.transform(fragment, parameters);
+	}
+}
