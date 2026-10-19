@@ -11,13 +11,25 @@ import java.util.regex.Pattern;
 
 public class ClrwlFabricXplat implements ClrwlXplat
 {
+    // Version of the vendored Colorwheel sources, formatted as the COLORWHEEL_VERSION macro
+    // shaderpacks test against. There is no "colorwheel" mod container to read this from
+    // once both share the flywheel mod id, so keep it in step with the upstream release
+    // these sources were taken from.
+    public static final String VENDORED_VERSION_FORMATTED = "10300";
+
     private final Pattern VERSION_REGEX = Pattern.compile("(\\d+).(\\d+).(\\d+).*");
 
     @Override
     public String getFormattedVersion()
     {
-        ModContainer clrwl = FabricLoader.getInstance().getModContainer(Colorwheel.MOD_ID)
-                .orElseThrow(() -> new IllegalStateException("Could not get Colorwheel mod container"));
+        var clrwlOpt = FabricLoader.getInstance().getModContainer(Colorwheel.MOD_ID);
+
+        if (clrwlOpt.isEmpty())
+        {
+            return VENDORED_VERSION_FORMATTED;
+        }
+
+        ModContainer clrwl = clrwlOpt.get();
 
         String version = clrwl.getMetadata().getVersion().getFriendlyString();
         Matcher matcher = VERSION_REGEX.matcher(version);
