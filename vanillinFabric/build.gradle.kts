@@ -80,6 +80,10 @@ dependencies {
 
     compileOnly(project(path = common, configuration = "vanillinClasses"))
     compileOnly(project(path = common, configuration = "vanillinResources"))
+    // The visuals read MobileOptions.hideOffscreenInstances, which lives in the backend source
+    // set. Compile-only: at runtime these classes come from the Flywheel jar this one is
+    // bundled with, so nothing extra is shipped.
+    compileOnly(project(path = common, configuration = "backendClasses"))
 
     // JiJ flywheel proper
     include(project(path = platform, configuration = "flywheelRemap"))

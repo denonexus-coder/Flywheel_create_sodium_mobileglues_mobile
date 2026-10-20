@@ -85,6 +85,9 @@ dependencies {
 
     compileOnly(project(path = common, configuration = "vanillinClasses"))
     compileOnly(project(path = common, configuration = "vanillinResources"))
+    // See vanillinFabric: MobileOptions lives in backend and is provided at runtime by the
+    // Flywheel jar this module bundles.
+    compileOnly(project(path = common, configuration = "backendClasses"))
 
     compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.4.1")!!)
     implementation(include("io.github.llamalad7:mixinextras-forge:0.4.1")!!)
