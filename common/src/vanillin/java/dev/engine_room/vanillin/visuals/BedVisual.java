@@ -56,7 +56,8 @@ public class BedVisual extends AbstractBlockEntityVisual<BedBlockEntity> impleme
 
 		// One bed is two block entities, so light is taken from the brighter half exactly like
 		// the vanilla BedRenderer does with the shared packed light.
-		neighborCombineResult = DoubleBlockCombiner.combineWithNeigighbour(BlockEntityType.BED, BedBlock::getBlockType, BedBlock::getConnectedDirection, ChestBlock.FACING, blockState, level, pos, (lvl, p) -> false);
+		// "Neigbour", not "Neighbour": the vanilla method name carries the typo.
+		neighborCombineResult = DoubleBlockCombiner.combineWithNeigbour(BlockEntityType.BED, BedBlock::getBlockType, BedBlock::getConnectedDirection, ChestBlock.FACING, blockState, level, pos, (lvl, p) -> false);
 		brightness = neighborCombineResult.apply(new BrightnessCombiner<BedBlockEntity>());
 
 		initialPose = createInitialPose();
