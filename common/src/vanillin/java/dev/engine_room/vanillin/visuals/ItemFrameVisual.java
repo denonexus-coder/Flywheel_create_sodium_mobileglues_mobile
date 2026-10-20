@@ -7,11 +7,13 @@ import org.joml.Matrix4f;
 import dev.engine_room.flywheel.api.model.Model;
 import dev.engine_room.flywheel.api.visual.EntityVisual;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
+import dev.engine_room.flywheel.backend.MobileOptions;
 import dev.engine_room.flywheel.lib.instance.InstanceTypes;
 import dev.engine_room.flywheel.lib.instance.TransformedInstance;
 import dev.engine_room.flywheel.lib.model.baked.BakedModelBuilder;
 import dev.engine_room.flywheel.lib.util.RendererReloadCache;
 import dev.engine_room.flywheel.lib.visual.AbstractVisual;
+import dev.engine_room.flywheel.lib.visual.EntityVisibilityTester;
 import dev.engine_room.flywheel.lib.visual.SimpleDynamicVisual;
 import dev.engine_room.vanillin.item.ItemModels;
 import net.minecraft.client.Minecraft;
@@ -49,6 +51,7 @@ public class ItemFrameVisual extends AbstractVisual implements EntityVisual<Item
 	private final TransformedInstance frame;
 	private final TransformedInstance item;
 	private final ItemFrame entity;
+	private final EntityVisibilityTester visibilityTester;
 	private ModelResourceLocation lastFrameLocation;
 	private ItemStack lastItemStack;
 
@@ -56,6 +59,7 @@ public class ItemFrameVisual extends AbstractVisual implements EntityVisual<Item
 		super(ctx, entity.level(), partialTick);
 
 		this.entity = entity;
+		visibilityTester = new EntityVisibilityTester(entity, ctx.renderOrigin(), 1.5f);
 
 		lastItemStack = entity.getItem()
 				.copy();
@@ -84,6 +88,26 @@ public class ItemFrameVisual extends AbstractVisual implements EntityVisual<Item
 
 	@Override
 	public void beginFrame(Context ctx) {
+		// Reconcile instead of only hiding: writing only when the answer changes keeps hidden
+		// instances from being re-marked every frame, and brings them back if the option is
+		// switched off at runtime.
+		boolean want = !MobileOptions.hideOffscreenInstances || visibilityTester.check(ctx.frustum());
+
+		// The frame is also hidden when the entity itself is invisible, so fold that in here;
+		// otherwise these two writes would fight each other every frame.
+		boolean frameVisible = want && !entity.isInvisible();
+		if (frameVisible != frame.handle().isVisible()) {
+			frame.handle()
+					.setVisible(frameVisible);
+		}
+		if (want != item.handle().isVisible()) {
+			item.handle()
+					.setVisible(want);
+		}
+		if (!want) {
+			return;
+		}
+
 		animate(ctx.partialTick());
 	}
 

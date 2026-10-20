@@ -8,6 +8,7 @@ import dev.engine_room.flywheel.api.material.Material;
 import dev.engine_room.flywheel.api.visual.DynamicVisual;
 import dev.engine_room.flywheel.api.visual.TickableVisual;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
+import dev.engine_room.flywheel.backend.MobileOptions;
 import dev.engine_room.flywheel.lib.instance.FlatLit;
 import dev.engine_room.flywheel.lib.instance.InstanceTypes;
 import dev.engine_room.flywheel.lib.instance.TransformedInstance;
@@ -84,11 +85,23 @@ public class MinecartVisual<T extends AbstractMinecart> extends AbstractEntityVi
 
 	@Override
 	public void beginFrame(DynamicVisual.Context context) {
-		if (!isVisible(context.frustum())) {
-			return;
-		}
+		// Reconcile instead of only hiding: writing only when the answer changes keeps a hidden
+		// tree from being re-walked every frame, and brings instances back if the option is
+		// switched off at runtime.
+		boolean want = !MobileOptions.hideOffscreenInstances || isVisible(context.frustum());
+		// Vanilla still draws carts whose display block renders as an entity block, and
+		// createContentsInstance hides the tree for those. Frustum hiding may add to that hide
+		// but must never undo it.
+		want = want && blockState.getRenderShape() != RenderShape.ENTITYBLOCK_ANIMATED;
 
-		if (!instances.visible()) {
+		if (want != instances.visible()) {
+			instances.visible(want);
+		}
+		if (contents != null && want != contents.handle().isVisible()) {
+			contents.handle()
+					.setVisible(want);
+		}
+		if (!want) {
 			return;
 		}
 

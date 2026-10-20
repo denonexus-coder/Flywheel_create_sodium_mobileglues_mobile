@@ -50,6 +50,22 @@ public final class MobileOptions {
 	public static boolean orphanInstanceUpload = true;
 
 	/**
+	 * Hide instances that fall outside the view frustum, by pulling them out of the instancer
+	 * rather than by skipping their update.
+	 *
+	 * <p>The instancing backend has no culling of its own: frustum culling for instances lives in
+	 * the indirect backend, which runs on compute shaders and therefore cannot run through a
+	 * translation layer. Without this the backend submits every instance it has been given,
+	 * including the block entities behind the camera.
+	 *
+	 * <p>The frustum test itself is not new - the visuals have always run it - but until now it
+	 * only stopped the transform from being written, which leaves the instance in the draw. Hiding
+	 * it instead removes it from the instancer, so it costs no draw call and is left out of the
+	 * per-frame rewrite of the instance array.
+	 */
+	public static boolean hideOffscreenInstances = true;
+
+	/**
 	 * True once the config file has recorded that the mobile defaults have been settled.
 	 *
 	 * <p>This exists because the platform config writes every mobile key on each save, so an

@@ -45,7 +45,11 @@ transitiveSourceSets {
     }
     sourceSet(vanillin) {
         rootCompile()
-        compileClasspath(api, lib, main)
+        // backend is on this list for MobileOptions: the visuals gate their frustum culling on a
+        // runtime switch, and that switch belongs with the other mobile switches rather than
+        // duplicated into whichever source set happens to be reachable. backend does not depend
+        // on vanillin, so this adds no cycle, and both ship in the same mod jar.
+        compileClasspath(api, lib, backend, main)
         outgoing()
     }
 }

@@ -12,6 +12,7 @@ import org.joml.Matrix4fc;
 import dev.engine_room.flywheel.api.instance.Instance;
 import dev.engine_room.flywheel.api.material.Material;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
+import dev.engine_room.flywheel.backend.MobileOptions;
 import dev.engine_room.flywheel.lib.material.CutoutShaders;
 import dev.engine_room.flywheel.lib.material.SimpleMaterial;
 import dev.engine_room.flywheel.lib.model.part.InstanceTree;
@@ -126,7 +127,19 @@ public class ChestVisual<T extends BlockEntity & LidBlockEntity> extends Abstrac
 			return;
 		}
 
-		if (doDistanceLimitThisFrame(context) || !isVisible(context.frustum())) {
+		// Reconcile instead of only hiding: writing only when the answer changes keeps a hidden
+		// tree from being re-walked every frame, and brings instances back if the option is
+		// switched off at runtime. Toggling the root covers the lid and lock children.
+		boolean want = !MobileOptions.hideOffscreenInstances || isVisible(context.frustum());
+		if (want != instances.visible()) {
+			instances.visible(want);
+		}
+		if (!want) {
+			return;
+		}
+
+		// Distance limiting only skips updates; it must never hide anything.
+		if (doDistanceLimitThisFrame(context)) {
 			return;
 		}
 

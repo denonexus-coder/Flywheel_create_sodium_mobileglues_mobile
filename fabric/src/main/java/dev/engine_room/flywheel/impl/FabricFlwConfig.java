@@ -39,6 +39,7 @@ public class FabricFlwConfig implements FlwConfig {
 	public static final boolean DISABLE_PARTICLES_DEFAULT = false;
 	public static final boolean FREEZE_GUI_ITEM_ANIMATION_DEFAULT = false;
 	public static final boolean ORPHAN_INSTANCE_UPLOAD_DEFAULT = true;
+	public static final boolean HIDE_OFFSCREEN_INSTANCES_DEFAULT = true;
 
 	public static final FabricFlwConfig INSTANCE = new FabricFlwConfig(PATH.toFile());
 
@@ -53,6 +54,7 @@ public class FabricFlwConfig implements FlwConfig {
 	public boolean disableParticles = DISABLE_PARTICLES_DEFAULT;
 	public boolean freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
 	public boolean orphanInstanceUpload = ORPHAN_INSTANCE_UPLOAD_DEFAULT;
+	public boolean hideOffscreenInstances = HIDE_OFFSCREEN_INSTANCES_DEFAULT;
 
 	/**
 	 * Whether the config file already records that the mobile defaults were settled - the
@@ -123,6 +125,7 @@ public class FabricFlwConfig implements FlwConfig {
 			disableParticles = DISABLE_PARTICLES_DEFAULT;
 			freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
 			orphanInstanceUpload = ORPHAN_INSTANCE_UPLOAD_DEFAULT;
+			hideOffscreenInstances = HIDE_OFFSCREEN_INSTANCES_DEFAULT;
 			syncMobileOptions();
 			return;
 		}
@@ -220,6 +223,7 @@ public class FabricFlwConfig implements FlwConfig {
 		disableParticles = DISABLE_PARTICLES_DEFAULT;
 		freezeGuiItemAnimation = FREEZE_GUI_ITEM_ANIMATION_DEFAULT;
 		orphanInstanceUpload = ORPHAN_INSTANCE_UPLOAD_DEFAULT;
+		hideOffscreenInstances = HIDE_OFFSCREEN_INSTANCES_DEFAULT;
 
 		var mobileJson = object.get("mobile");
 
@@ -243,6 +247,7 @@ public class FabricFlwConfig implements FlwConfig {
 		disableParticles = readBoolean(mobile, "disableParticles", DISABLE_PARTICLES_DEFAULT);
 		freezeGuiItemAnimation = readBoolean(mobile, "freezeGuiItemAnimation", FREEZE_GUI_ITEM_ANIMATION_DEFAULT);
 		orphanInstanceUpload = readBoolean(mobile, "orphanInstanceUpload", ORPHAN_INSTANCE_UPLOAD_DEFAULT);
+		hideOffscreenInstances = readBoolean(mobile, "hideOffscreenInstances", HIDE_OFFSCREEN_INSTANCES_DEFAULT);
 	}
 
 	private static boolean readBoolean(JsonObject object, String key, boolean defaultValue) {
@@ -266,6 +271,7 @@ public class FabricFlwConfig implements FlwConfig {
 		MobileOptions.disableParticles = disableParticles;
 		MobileOptions.freezeGuiItemAnimation = freezeGuiItemAnimation;
 		MobileOptions.orphanInstanceUpload = orphanInstanceUpload;
+		MobileOptions.hideOffscreenInstances = hideOffscreenInstances;
 
 		// Hand over what the file recorded, then let the defaults claim whatever it did not. Doing
 		// this here and again from the driver detection makes the outcome independent of which of
@@ -290,6 +296,7 @@ public class FabricFlwConfig implements FlwConfig {
 		mobile.addProperty("disableParticles", disableParticles);
 		mobile.addProperty("freezeGuiItemAnimation", freezeGuiItemAnimation);
 		mobile.addProperty("orphanInstanceUpload", orphanInstanceUpload);
+		mobile.addProperty("hideOffscreenInstances", hideOffscreenInstances);
 		// From the runtime state rather than the local field: on a profile with no file yet the
 		// defaults run without this class ever reading one, and that session must still be able to
 		// record itself as settled or the defaults would keep running over the user's choices.

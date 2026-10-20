@@ -3,6 +3,7 @@ package dev.engine_room.vanillin.visuals;
 import com.mojang.math.Transformation;
 
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
+import dev.engine_room.flywheel.backend.MobileOptions;
 import dev.engine_room.flywheel.lib.instance.InstanceTypes;
 import dev.engine_room.flywheel.lib.instance.TransformedInstance;
 import dev.engine_room.flywheel.lib.model.Models;
@@ -61,8 +62,17 @@ public class ItemDisplayVisual extends AbstractEntityVisual<Display.ItemDisplay>
 			return;
 		}
 
-		instance.handle()
-				.setVisible(true);
+		// Reconcile instead of only hiding: writing only when the answer changes keeps a hidden
+		// instance from being re-marked every frame, and brings it back if the option is
+		// switched off at runtime. Hiding is what actually pulls it out of the instanced draw.
+		boolean want = !MobileOptions.hideOffscreenInstances || isVisible(ctx.frustum());
+		if (want != instance.handle().isVisible()) {
+			instance.handle()
+					.setVisible(want);
+		}
+		if (!want) {
+			return;
+		}
 
 		var itemStack = object.itemStack();
 

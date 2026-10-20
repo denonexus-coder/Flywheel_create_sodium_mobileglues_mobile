@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
+import dev.engine_room.flywheel.backend.MobileOptions;
 import dev.engine_room.flywheel.lib.instance.InstanceTypes;
 import dev.engine_room.flywheel.lib.instance.TransformedInstance;
 import dev.engine_room.flywheel.lib.transform.TransformStack;
@@ -30,6 +31,11 @@ public class ItemVisual extends AbstractEntityVisual<ItemEntity> implements Simp
 	private ItemStack currentStack;
 
 	private InstanceRecycler<TransformedInstance> instances;
+	// How many instances the recycler held the last time animate() ran, and whether they are
+	// currently hidden. The recycler keeps its pool private, so hiding has to walk it by
+	// calling get() exactly this many times.
+	private int instanceCount;
+	private boolean instancesVisible = true;
 
 	public ItemVisual(VisualizationContext ctx, ItemEntity entity, float partialTick) {
 		super(ctx, entity, partialTick);
@@ -50,7 +56,20 @@ public class ItemVisual extends AbstractEntityVisual<ItemEntity> implements Simp
 
 	@Override
 	public void beginFrame(Context ctx) {
-		if (!isVisible(ctx.frustum())) {
+		// Reconcile instead of only hiding: writing only when the answer changes keeps hidden
+		// instances from being re-marked every frame, and brings them back if the option is
+		// switched off at runtime.
+		boolean want = !MobileOptions.hideOffscreenInstances || isVisible(ctx.frustum());
+		if (want != instancesVisible) {
+			instancesVisible = want;
+
+			instances.resetCount();
+			for (int i = 0; i < instanceCount; i++) {
+				instances.get()
+						.setVisible(want);
+			}
+		}
+		if (!want) {
 			return;
 		}
 
@@ -122,6 +141,9 @@ public class ItemVisual extends AbstractEntityVisual<ItemEntity> implements Simp
 		}
 
 		instances.discardExtra();
+		// discardExtra() trimmed the pool down to exactly the instances fetched above, so that
+		// count can reach all of them again when visibility changes.
+		instanceCount = j;
 	}
 
 	protected int getRenderAmount(ItemStack pStack) {

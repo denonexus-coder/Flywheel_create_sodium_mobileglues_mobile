@@ -15,14 +15,20 @@ import dev.engine_room.vanillin.config.BlockEntityVisualizerBuilder;
 import dev.engine_room.vanillin.config.Configurator;
 import dev.engine_room.vanillin.config.EntityVisualizerBuilder;
 import dev.engine_room.vanillin.elements.ShadowElement;
+import dev.engine_room.vanillin.visuals.BedVisual;
 import dev.engine_room.vanillin.visuals.BellVisual;
 import dev.engine_room.vanillin.visuals.BlockDisplayVisual;
+import dev.engine_room.vanillin.visuals.CampfireVisual;
 import dev.engine_room.vanillin.visuals.ChestVisual;
+import dev.engine_room.vanillin.visuals.DecoratedPotVisual;
 import dev.engine_room.vanillin.visuals.ItemDisplayVisual;
 import dev.engine_room.vanillin.visuals.ItemFrameVisual;
 import dev.engine_room.vanillin.visuals.ItemVisual;
+import dev.engine_room.vanillin.visuals.LecternVisual;
 import dev.engine_room.vanillin.visuals.MinecartVisual;
+import dev.engine_room.vanillin.visuals.PistonVisual;
 import dev.engine_room.vanillin.visuals.ShulkerBoxVisual;
+import dev.engine_room.vanillin.visuals.StructureBlockVisual;
 import net.minecraft.client.model.geom.ModelLayerLocation;
 import net.minecraft.client.model.geom.ModelLayers;
 import net.minecraft.world.entity.Entity;
@@ -103,6 +109,32 @@ public class VanillaVisuals {
 				.skipVanillaRender(ItemVisual::isSupported)
 				.apply(EXPERIMENTAL);
 
+		// Block entity visuals whose vanilla renderer draws real geometry; each fully replaces
+		// its renderer, so none needs the neverSkipVanillaRender escape hatch. Kept together
+		// above the entity anchor so both halves stay independently editable.
+		builder(BlockEntityType.BED)
+				.factory(BedVisual::new)
+				.apply(STABLE);
+		builder(BlockEntityType.LECTERN)
+				.factory(LecternVisual::new)
+				.apply(STABLE);
+		builder(BlockEntityType.CAMPFIRE)
+				.factory(CampfireVisual::new)
+				.apply(STABLE);
+		builder(BlockEntityType.DECORATED_POT)
+				.factory(DecoratedPotVisual::new)
+				.apply(STABLE);
+		builder(BlockEntityType.PISTON)
+				.factory(PistonVisual::new)
+				.apply(STABLE);
+		builder(BlockEntityType.STRUCTURE_BLOCK)
+				.factory(StructureBlockVisual::new)
+				.apply(STABLE);
+
+		// Kept as the last statement so that the two registration blocks never share a line:
+		// anything added above belongs to this method, anything for entities goes in
+		// MobVisuals.init(), and the two can be edited without either seeing the other.
+		MobVisuals.init();
 	}
 
 	public static <T extends Entity> void commonElements(EntityBuilder<T> builder) {

@@ -8,6 +8,7 @@ import org.joml.Matrix4fc;
 import dev.engine_room.flywheel.api.instance.Instance;
 import dev.engine_room.flywheel.api.material.Material;
 import dev.engine_room.flywheel.api.visualization.VisualizationContext;
+import dev.engine_room.flywheel.backend.MobileOptions;
 import dev.engine_room.flywheel.lib.material.SimpleMaterial;
 import dev.engine_room.flywheel.lib.model.part.InstanceTree;
 import dev.engine_room.flywheel.lib.model.part.ModelTrees;
@@ -45,7 +46,19 @@ public class BellVisual extends AbstractBlockEntityVisual<BellBlockEntity> imple
 
 	@Override
 	public void beginFrame(Context context) {
-		if (doDistanceLimitThisFrame(context) || !isVisible(context.frustum())) {
+		// Reconcile instead of only hiding: writing only when the answer changes keeps a hidden
+		// tree from being re-walked every frame, and brings instances back if the option is
+		// switched off at runtime.
+		boolean want = !MobileOptions.hideOffscreenInstances || isVisible(context.frustum());
+		if (want != instances.visible()) {
+			instances.visible(want);
+		}
+		if (!want) {
+			return;
+		}
+
+		// Distance limiting only skips updates; it must never hide anything.
+		if (doDistanceLimitThisFrame(context)) {
 			return;
 		}
 
