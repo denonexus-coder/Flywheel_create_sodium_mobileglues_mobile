@@ -3,6 +3,8 @@ package dev.engine_room.flywheel.impl;
 import java.util.ArrayList;
 
 import dev.engine_room.flywheel.api.backend.Backend;
+import dev.engine_room.flywheel.backend.Backends;
+import dev.engine_room.flywheel.backend.gl.GlCompat;
 import dev.engine_room.flywheel.impl.visualization.VisualizationManagerImpl;
 import dev.engine_room.flywheel.lib.backend.SimpleBackend;
 import dev.engine_room.flywheel.lib.util.ResourceUtil;
@@ -54,6 +56,7 @@ public final class BackendManagerImpl {
 		var preferred = FlwConfig.INSTANCE.backend();
 		if (preferred.isSupported()) {
 			backend = preferred;
+			logChosenBackend(backend, false);
 			return;
 		}
 
@@ -72,6 +75,36 @@ public final class BackendManagerImpl {
 		}
 
 		FlwImpl.LOGGER.warn("Flywheel backend fell back from '{}' to '{}'", Backend.REGISTRY.getIdOrThrow(preferred), Backend.REGISTRY.getIdOrThrow(backend));
+		logChosenBackend(backend, true);
+	}
+
+	/**
+	 * Logs the chosen Flywheel backend so players and developers can immediately confirm
+	 * which rendering path is active.
+	 *
+	 * <p>On MobileGlues/PowerVR the indirect (compute) backend is disabled at the
+	 * {@link dev.engine_room.flywheel.backend.gl.GlCompat} level, so the instancing
+	 * backend is always selected.  This message confirms that path is live.
+	 */
+	private static void logChosenBackend(Backend chosen, boolean wasFallback) {
+		ResourceLocation id = Backend.REGISTRY.getId(chosen);
+		String idStr = id != null ? id.toString() : "[unregistered]";
+
+		if (chosen == Backends.INSTANCING) {
+			boolean mobile = GlCompat.MOBILE_GLUES;
+			FlwImpl.LOGGER.info(
+					"[Flywheel] Backend ATIVO: {} (GPU instancing via VBO).{}",
+					idStr,
+					mobile
+							? " MobileGlues detectado — INDIRECT (compute shaders) bloqueado; INSTANCING é a via rápida."
+							: ""
+			);
+		} else if (chosen == OFF_BACKEND) {
+			FlwImpl.LOGGER.warn("[Flywheel] Backend: OFF — nenhuma instância será renderizada via Flywheel.");
+		} else {
+			FlwImpl.LOGGER.info("[Flywheel] Backend ATIVO: {}{}", idStr,
+					wasFallback ? " (fallback automático)" : "");
+		}
 	}
 
 	public static String getBackendString() {

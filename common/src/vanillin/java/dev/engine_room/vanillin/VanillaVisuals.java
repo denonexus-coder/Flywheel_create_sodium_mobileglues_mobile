@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import dev.engine_room.vanillin.compose.ComposableEntityVisual;
@@ -39,6 +41,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 
 public class VanillaVisuals {
+	private static final Logger LOGGER = LogManager.getLogger("Vanillin-BlockEntityInstancing");
+
 	public static final Configurator CONFIGURATOR = new Configurator();
 
 	// Stable visuals are enabled by default always.
@@ -135,6 +139,20 @@ public class VanillaVisuals {
 		// anything added above belongs to this method, anything for entities goes in
 		// MobVisuals.init(), and the two can be edited without either seeing the other.
 		MobVisuals.init();
+
+		// Log every block-entity and entity type registered for Flywheel instancing so
+		// players and developers can confirm that the vanilla renderer is being bypassed.
+		LOGGER.info(
+				"[Vanillin] Block-Entity & Entity Instancing ATIVO via Flywheel (Técnica 3).\n" +
+				"  BlockEntities instanciados (STABLE): CHEST, ENDER_CHEST, TRAPPED_CHEST, " +
+				"BELL, SHULKER_BOX, BED, LECTERN, CAMPFIRE, DECORATED_POT, PISTON, STRUCTURE_BLOCK\n" +
+				"  Entidades instanciadas  (STABLE): BLOCK_DISPLAY, CHEST_MINECART, COMMAND_BLOCK_MINECART, " +
+				"FURNACE_MINECART, HOPPER_MINECART, MINECART, SPAWNER_MINECART, TNT_MINECART\n" +
+				"  Entidades instanciadas  (EXPERIMENTAL={}): ITEM_DISPLAY, ITEM_FRAME, GLOW_ITEM_FRAME, ITEM\n" +
+				"  Cada tipo acima usa um único VBO de instâncias — o renderer vanilla é ignorado " +
+				"e substituído pelo Flywheel INSTANCING backend (VBO/UBO, sem compute shaders).",
+				EXPERIMENTAL
+		);
 	}
 
 	public static <T extends Entity> void commonElements(EntityBuilder<T> builder) {
