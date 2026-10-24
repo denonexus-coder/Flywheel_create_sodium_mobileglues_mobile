@@ -45,12 +45,17 @@ public class VanillaVisuals {
 
 	public static final Configurator CONFIGURATOR = new Configurator();
 
-	// Stable visuals are enabled by default always.
+	// Ultra Performance Profile: only essential block entities/entities instanced
+	// Based on user config: chest/ender_chest/trapped_chest + block_display/falling_block + item_display/item
+	public static final boolean PERFORMANCE = true;
+	// Stable visuals (only the performance-critical ones)
 	public static final boolean STABLE = true;
-	// Experimental visuals are enabled by default in dev.
+	// Experimental visuals (only item_display and item for dropped items)
 	public static final boolean EXPERIMENTAL = VanillinXplat.INSTANCE.isDevelopmentEnvironment();
 
 	public static void init() {
+		// ===== BLOCK ENTITIES (PERFORMANCE PROFILE) =====
+		// Only: chest, ender_chest, trapped_chest (per user config "default")
 		builder(BlockEntityType.CHEST)
 				.factory(ChestVisual::new)
 				.apply(STABLE);
@@ -61,48 +66,24 @@ public class VanillaVisuals {
 				.factory(ChestVisual::new)
 				.apply(STABLE);
 
-		builder(BlockEntityType.BELL)
-				.factory(BellVisual::new)
-				.apply(STABLE);
+		// DISABLED for performance: BELL, SHULKER_BOX, BED, LECTERN, CAMPFIRE, DECORATED_POT, PISTON, STRUCTURE_BLOCK
 
-		builder(BlockEntityType.SHULKER_BOX)
-				.factory(ShulkerBoxVisual::new)
-				.apply(STABLE);
-
+		// ===== ENTITIES (PERFORMANCE PROFILE) =====
+		// block_display (user config "default")
 		builder(EntityType.BLOCK_DISPLAY).factory(BlockDisplayVisual::new)
 				.apply(STABLE);
 
+		// item_display + item (user config "force_enable" - dropped items and item displays)
 		composable(EntityType.ITEM_DISPLAY).with(element(VisualElements.ITEM_DISPLAY).build())
 				.shouldVisualize((ctx, e) -> ItemDisplayVisual.shouldVisualize(e))
 				.build()
 				.skipVanillaRender(ItemDisplayVisual::shouldVisualize)
 				.apply(EXPERIMENTAL);
 
-		minecart(EntityType.CHEST_MINECART, ModelLayers.CHEST_MINECART)
-				.apply(STABLE);
-		minecart(EntityType.COMMAND_BLOCK_MINECART, ModelLayers.COMMAND_BLOCK_MINECART)
-				.apply(STABLE);
-		minecart(EntityType.FURNACE_MINECART, ModelLayers.FURNACE_MINECART)
-				.apply(STABLE);
-		minecart(EntityType.HOPPER_MINECART, ModelLayers.HOPPER_MINECART)
-				.apply(STABLE);
-		minecart(EntityType.MINECART, ModelLayers.MINECART)
-				.apply(STABLE);
-		minecart(EntityType.SPAWNER_MINECART, ModelLayers.SPAWNER_MINECART)
-				.apply(STABLE);
+		// minecarts DISABLED for performance
+		// item_frame / glow_item_frame DISABLED for performance
 
-		composable(EntityType.TNT_MINECART).apply(VanillaVisuals::commonElements)
-				.with(element(VisualElements.SHADOW).configure(new ShadowElement.Config(0.7f, ShadowElement.Config.DEFAULT_STRENGTH))
-						.build())
-				.with(element(VisualElements.FIRE).build())
-				.with(element(VisualElements.TNT_MINECART).build())
-				.build()
-				.skipVanillaRender(MinecartVisual::shouldSkipRender)
-				.apply(STABLE);
-
-		itemFrame(EntityType.ITEM_FRAME).apply(EXPERIMENTAL);
-		itemFrame(EntityType.GLOW_ITEM_FRAME).apply(EXPERIMENTAL);
-
+		// item entity (dropped items) - FORCE ENABLE per user config
 		composable(EntityType.ITEM).apply(VanillaVisuals::commonElements)
 				.with(element(VisualElements.FIRE).build())
 				.with(element(VisualElements.SHADOW).configure(new ShadowElement.Config(0.15f, 0.75f))
@@ -113,28 +94,6 @@ public class VanillaVisuals {
 				.skipVanillaRender(ItemVisual::isSupported)
 				.apply(EXPERIMENTAL);
 
-		// Block entity visuals whose vanilla renderer draws real geometry; each fully replaces
-		// its renderer, so none needs the neverSkipVanillaRender escape hatch. Kept together
-		// above the entity anchor so both halves stay independently editable.
-		builder(BlockEntityType.BED)
-				.factory(BedVisual::new)
-				.apply(STABLE);
-		builder(BlockEntityType.LECTERN)
-				.factory(LecternVisual::new)
-				.apply(STABLE);
-		builder(BlockEntityType.CAMPFIRE)
-				.factory(CampfireVisual::new)
-				.apply(STABLE);
-		builder(BlockEntityType.DECORATED_POT)
-				.factory(DecoratedPotVisual::new)
-				.apply(STABLE);
-		builder(BlockEntityType.PISTON)
-				.factory(PistonVisual::new)
-				.apply(STABLE);
-		builder(BlockEntityType.STRUCTURE_BLOCK)
-				.factory(StructureBlockVisual::new)
-				.apply(STABLE);
-
 		// Kept as the last statement so that the two registration blocks never share a line:
 		// anything added above belongs to this method, anything for entities goes in
 		// MobVisuals.init(), and the two can be edited without either seeing the other.
@@ -143,13 +102,14 @@ public class VanillaVisuals {
 		// Log every block-entity and entity type registered for Flywheel instancing so
 		// players and developers can confirm that the vanilla renderer is being bypassed.
 		LOGGER.info(
-				"[Vanillin] Block-Entity & Entity Instancing ATIVO via Flywheel (Técnica 3).\n" +
-				"  BlockEntities instanciados (STABLE): CHEST, ENDER_CHEST, TRAPPED_CHEST, " +
-				"BELL, SHULKER_BOX, BED, LECTERN, CAMPFIRE, DECORATED_POT, PISTON, STRUCTURE_BLOCK\n" +
-				"  Entidades instanciadas  (STABLE): BLOCK_DISPLAY, CHEST_MINECART, COMMAND_BLOCK_MINECART, " +
-				"FURNACE_MINECART, HOPPER_MINECART, MINECART, SPAWNER_MINECART, TNT_MINECART\n" +
-				"  Entidades instanciadas  (EXPERIMENTAL={}): ITEM_DISPLAY, ITEM_FRAME, GLOW_ITEM_FRAME, ITEM\n" +
-				"  Cada tipo acima usa um único VBO de instâncias — o renderer vanilla é ignorado " +
+				"[Vanillin] Block-Entity & Entity Instancing ATIVO via Flywheel (Técnica 3 - ULTRA PERFORMANCE).\n" +
+				"  BlockEntities instanciados: CHEST, ENDER_CHEST, TRAPPED_CHEST (3)\n" +
+				"  Entidades instanciadas  (STABLE): BLOCK_DISPLAY (1)\n" +
+				"  Entidades instanciadas  (EXPERIMENTAL): ITEM_DISPLAY, ITEM (2)\n" +
+				"  DESABILITADOS p/ performance: BELL, SHULKER_BOX, BED, LECTERN, CAMPFIRE, DECORATED_POT, PISTON, STRUCTURE_BLOCK,\n" +
+				"    CHEST_MINECART, COMMAND_BLOCK_MINECART, FURNACE_MINECART, HOPPER_MINECART, MINECART, SPAWNER_MINECART,\n" +
+				"    TNT_MINECART, ITEM_FRAME, GLOW_ITEM_FRAME\n" +
+				"  Cada tipo usa um único VBO de instâncias — o renderer vanilla é ignorado " +
 				"e substituído pelo Flywheel INSTANCING backend (VBO/UBO, sem compute shaders).",
 				EXPERIMENTAL
 		);
