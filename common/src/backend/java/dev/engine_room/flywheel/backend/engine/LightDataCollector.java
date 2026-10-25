@@ -70,6 +70,14 @@ public abstract class LightDataCollector {
 			}
 		}
 
+		// Infinitium and other replacement light engines do not expose a vanilla LightEngine
+		// storage, but their LayerLightEventListener still returns DataLayers through the
+		// vanilla API. Using that path avoids the 18x18x18 getLightValue fallback below.
+		if (layerListener != null) {
+			return section -> Objects.requireNonNullElse(
+					layerListener.getDataLayerData(SectionPos.of(section)), ALWAYS_15);
+		}
+
 		return null;
 	}
 
@@ -86,6 +94,13 @@ public abstract class LightDataCollector {
 					return Objects.requireNonNullElse(out, ALWAYS_0);
 				};
 			}
+		}
+
+		// Infinitium and other replacement light engines: one DataLayer per section
+		// instead of 18x18x18 getLightValue calls in Slow.
+		if (layerListener != null) {
+			return section -> Objects.requireNonNullElse(
+					layerListener.getDataLayerData(SectionPos.of(section)), ALWAYS_0);
 		}
 
 		return null;
