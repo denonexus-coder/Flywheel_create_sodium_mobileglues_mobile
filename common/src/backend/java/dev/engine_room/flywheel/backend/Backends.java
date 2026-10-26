@@ -23,21 +23,12 @@ public final class Backends {
 			.register(ResourceUtil.rl("instancing"));
 
 	/**
-	 * Use Compute shaders to cull instances.
+	 * Use Compute shaders to cull instances. Disabled on mobile/translation layers and when shaders are in use.
 	 */
 	public static final Backend INDIRECT = SimpleBackend.builder()
 			.engineFactory(level -> new EngineImpl(level, new IndirectDrawManager(IndirectPrograms.get()), 256))
-			.priority(() -> {
-				// Read from GlCompat in these provider because loading GlCompat
-				// at the same time the backends are registered causes GlCapabilities to be null.
-				if (GlCompat.DRIVER == Driver.INTEL) {
-					// Intel has very poor performance with indirect rendering, and on top of that has graphics bugs
-					return 1;
-				} else {
-					return 1000;
-				}
-			})
-			.supported(() -> GlCompat.SUPPORTS_INDIRECT && IndirectPrograms.allLoaded() && !ShadersModHelper.isShaderPackInUse())
+			.priority(() -> 1)
+			.supported(() -> !GlCompat.MOBILE_GLUES && GlCompat.SUPPORTS_INDIRECT && IndirectPrograms.allLoaded() && !ShadersModHelper.isShaderPackInUse())
 			.register(ResourceUtil.rl("indirect"));
 
 	private Backends() {

@@ -34,20 +34,8 @@ public class ClrwlBackend
 
     public static final Backend IRIS_INDIRECT = SimpleBackend.builder()
             .engineFactory(level -> new ClrwlEngine(level, 256, ClrwlIndirectDrawManager::build))
-            .priority(() -> {
-                // Read from GlCompat in these provider because loading GlCompat
-                // at the same time the backends are registered causes GlCapabilities to be null.
-                if (GlCompat.DRIVER == Driver.INTEL)
-                {
-                    // Intel has very poor performance with indirect rendering, and on top of that has graphics bugs
-                    return 1;
-                }
-                else
-                {
-                    return 1000;
-                }
-            })
-            .supported(() -> GlCompat.SUPPORTS_INDIRECT && isUsingCompatibleShaderPack() && hasEnoughShaderStorageUnits())
+            .priority(() -> 1)
+            .supported(() -> !GlCompat.MOBILE_GLUES && GlCompat.SUPPORTS_INDIRECT && isUsingCompatibleShaderPack() && hasEnoughShaderStorageUnits())
             .register(Colorwheel.rl("indirect"));
 
     public static void init()
